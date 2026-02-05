@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Agente de Pregão - Demo</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">🧾</div>
+      <div>
+        <div class="title">Agente de Pregão</div>
+        <div class="subtitle">Preview → Aprovação → Geração de planilha</div>
+      </div>
+    </div>
+    <div class="status" id="apiStatus">Conectando…</div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>1) Pedido do usuário</h2>
+
+      <div class="grid">
+        <div>
+          <label for="template">Template</label>
+          <select id="template"></select>
+          <div class="hint">Templates em <code>data/templates/</code></div>
+        </div>
+
+        <div>
+          <label for="mode">Modo</label>
+          <select id="mode" disabled>
+            <option value="preview" selected>Preview (revisar descrições)</option>
+          </select>
+          <div class="hint">O sistema exige <b>aprovação</b> antes de gerar.</div>
+        </div>
+      </div>
+
+      <label for="prompt">Prompt</label>
+      <textarea id="prompt" rows="6" placeholder="Ex.: Gere uma planilha ... 20 unidades do Teclado ... no preço de R$ 400,00 cada; 50 caixas de clipes ... no preço de R$ 5,00 cada."></textarea>
+
+      <div class="actions">
+        <button id="btnPreview" class="primary">Gerar preview</button>
+        <button id="btnGenerate" class="danger" disabled>Gerar planilha (aprovado)</button>
+        <label class="checkbox">
+          <input type="checkbox" id="approved" />
+          <span>Eu revisei e aprovo as descrições</span>
+        </label>
+      </div>
+
+      <div class="notice">
+        <b>IA local:</b> este demo usa <b>Ollama (Qwen)</b> para gerar especificações detalhadas de teclados com base em evidências da web.
+        Na primeira execução, o modelo pode precisar ser baixado.
+        <br/><br/>
+        <b>Importante:</b> para itens desconhecidos, o sistema faz busca via SearxNG e produz uma descrição preliminar + assunções. Sempre revise.
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>2) Preview</h2>
+      <div id="previewNotes" class="notes"></div>
+      <div id="previewList" class="items"></div>
+    </section>
+
+    <section class="card">
+      <h2>3) Geração</h2>
+      <div class="grid">
+        <div>
+          <div class="kpi">
+            <div class="kpiLabel">Status do job</div>
+            <div class="kpiValue" id="jobStatus">—</div>
+          </div>
+        </div>
+        <div>
+          <div class="kpi">
+            <div class="kpiLabel">Arquivo gerado</div>
+            <div class="kpiValue"><a id="fileLink" href="#" target="_blank" rel="noreferrer">—</a></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btnCheckJob" disabled>Consultar status</button>
+      </div>
+      <div class="hint">O arquivo aparece em <code>data/outputs/</code> e também pode ser baixado pelo link acima.</div>
+    </section>
+
+    <section class="card">
+      <h2>Busca web</h2>
+      <div class="grid">
+        <div>
+          <p>O projeto inclui um metabusca local (SearxNG) para evitar assinatura de APIs.</p>
+          <a class="chip" href="http://localhost:8080" target="_blank" rel="noreferrer">Abrir SearxNG</a>
+        </div>
+        <div>
+          <p class="muted">Se estiver apresentando em outro computador na rede, troque <code>localhost</code> pelo IP da máquina.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>Demo local • Docker • Windows</span>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

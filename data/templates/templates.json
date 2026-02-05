@@ -1,0 +1,17 @@
+{
+  "PregaoModelo_v1": {
+    "label": "Pregão Modelo",
+    "file": "Pregão Modelo.xlsx",
+    "sheet": "Página1",
+    "start_row": 3,
+    "columns": {
+      "prioridade": "A",
+      "descricao_resumida": "B",
+      "descricao_detalhada": "C",
+      "unidade": "D",
+      "quantidade": "E",
+      "preco_unit": "F",
+      "preco_total": "G"
+    }
+  }
+}

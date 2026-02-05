@@ -1,0 +1,10 @@
+use_default_settings: true
+
+server:
+  public_instance: false
+  secret_key: "bqacen0MSVnhL0rUlpiPd43v-JqY4A1l5I1yeZV7_Tc"
+
+search:
+  formats:
+    - html
+    - json
