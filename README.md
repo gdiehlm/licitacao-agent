@@ -4,7 +4,7 @@ Este projeto roda **localmente** via Docker (Windows/Mac/Linux) e demonstra:
 - multiusuário (estrutura pronta para evoluir; nesta demo é API)
 - busca web **sem assinatura** via **SearxNG** (self-host)
 - geração de planilha `.xlsx` a partir de um template (Pregão Modelo.xlsx)
-- fluxo com **preview → aprovação → gerar planilha**
+- fluxo com **preview (editável) → aprovação → gerar planilha XLSX + CSV para Google Sheets**
 
 ## Pré-requisitos
 - Docker Desktop instalado e funcionando.
@@ -48,6 +48,9 @@ curl http://localhost:8000/api/job/<JOB_ID>
 ```
 
 Quando finalizar, o `result` traz o caminho do arquivo gerado em `data/outputs/`.
+Quando finalizar, o `result` agora retorna dois arquivos em `data/outputs/`:
+- `xlsx`: planilha no template padrão.
+- `google_sheets_csv`: CSV pronto para importação no Google Sheets, mantendo as colunas padrão do template.
 
 ## Observações importantes
 - Para itens desconhecidos, a descrição é **preliminar** e vem acompanhada de **assunções** para revisão humana.
