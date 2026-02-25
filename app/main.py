@@ -1,7 +1,7 @@
 import os
 import json
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
@@ -13,7 +13,7 @@ from rq import Queue
 from services.prompt_parser import parse_prompt
 from services.spec_builder import build_spec
 from services.llm_client import LLMError
-from services.excel_writer import OutputItem, write_from_template, dated_filename
+from services.excel_writer import OutputItem, write_from_template, write_google_sheets_csv, dated_filename
 
 APP_DIR = Path(__file__).parent
 DATA_TEMPLATES = Path(os.environ.get("TEMPLATES_DIR", "/data/templates"))
@@ -56,13 +56,13 @@ class PreviewItem(BaseModel):
     categoria: str
     descricao_resumida: str
     descricao_detalhada: str
-    assumptions: List[str] = []
-    sources: List[dict] = []
+    assumptions: List[str] = Field(default_factory=list)
+    sources: List[dict] = Field(default_factory=list)
 
 class PreviewResponse(BaseModel):
     template_id: str
     items: List[PreviewItem]
-    notes: List[str] = []
+    notes: List[str] = Field(default_factory=list)
 
 def load_templates():
     cfg_path = DATA_TEMPLATES / "templates.json"
@@ -112,35 +112,51 @@ def preview(req: PreviewRequest):
 class GenerateRequest(BaseModel):
     template_id: str = Field(default="PregaoModelo_v1")
     prompt: str
+    items: List[PreviewItem] = Field(default_factory=list)
     # no MVP: usuário informa preço no prompt; sem cálculo externo
     approved: bool = False
 
 class GenerateResponse(BaseModel):
     job_id: str
 
-def _generate_xlsx(template_id: str, prompt: str) -> str:
+def _output_item_from_preview(item: PreviewItem) -> OutputItem:
+    return OutputItem(
+        prioridade=item.prioridade,
+        descricao_resumida=item.descricao_resumida,
+        descricao_detalhada=item.descricao_detalhada,
+        unidade=item.unidade,
+        quantidade=item.quantidade,
+        preco_unit=item.preco_unit,
+    )
+
+def _generate_files(template_id: str, prompt: str, reviewed_items: List[dict]) -> dict:
     cfg = load_templates()
     t = cfg[template_id]
 
-    parsed = parse_prompt(prompt)
     output_items: List[OutputItem] = []
-    for p in parsed:
-        try:
-            spec = build_spec(p.referencia_raw, p.preco_unit, SEARXNG_URL)
-        except LLMError as e:
-            raise HTTPException(502, f"Erro ao gerar especificação via IA local (Ollama): {e}")
-        output_items.append(OutputItem(
-            prioridade=p.prioridade,
-            descricao_resumida=spec["resumo"],
-            descricao_detalhada=spec["detalhada"],
-            unidade=p.unidade,
-            quantidade=p.quantidade,
-            preco_unit=p.preco_unit
-        ))
+    if reviewed_items:
+        output_items = [_output_item_from_preview(PreviewItem(**item)) for item in reviewed_items]
+    else:
+        parsed = parse_prompt(prompt)
+        for p in parsed:
+            try:
+                spec = build_spec(p.referencia_raw, p.preco_unit, SEARXNG_URL)
+            except LLMError as e:
+                raise HTTPException(502, f"Erro ao gerar especificação via IA local (Ollama): {e}")
+            output_items.append(OutputItem(
+                prioridade=p.prioridade,
+                descricao_resumida=spec["resumo"],
+                descricao_detalhada=spec["detalhada"],
+                unidade=p.unidade,
+                quantidade=p.quantidade,
+                preco_unit=p.preco_unit
+            ))
 
     DATA_OUTPUTS.mkdir(parents=True, exist_ok=True)
-    filename = dated_filename("Pregão")
-    out_path = DATA_OUTPUTS / filename
+    filename_xlsx = dated_filename("Pregão")
+    out_path_xlsx = DATA_OUTPUTS / filename_xlsx
+    filename_gsheets = dated_filename("Pregão GoogleSheets", "csv")
+    out_path_gsheets = DATA_OUTPUTS / filename_gsheets
 
     template_path = DATA_TEMPLATES / t["file"]
     if not template_path.exists():
@@ -148,13 +164,14 @@ def _generate_xlsx(template_id: str, prompt: str) -> str:
 
     write_from_template(
         template_path=str(template_path),
-        out_path=str(out_path),
+        out_path=str(out_path_xlsx),
         sheet=t["sheet"],
         start_row=int(t["start_row"]),
         columns=t["columns"],
         items=output_items
     )
-    return str(out_path)
+    write_google_sheets_csv(str(out_path_gsheets), output_items)
+    return {"xlsx": str(out_path_xlsx), "google_sheets_csv": str(out_path_gsheets)}
 
 @app.post("/api/generate", response_model=GenerateResponse)
 def generate(req: GenerateRequest):
@@ -164,7 +181,8 @@ def generate(req: GenerateRequest):
     if req.template_id not in cfg:
         raise HTTPException(400, "Template inválido")
 
-    job = q.enqueue(_generate_xlsx, req.template_id, req.prompt)
+    reviewed_items = [item.model_dump() for item in req.items]
+    job = q.enqueue(_generate_files, req.template_id, req.prompt, reviewed_items)
     return GenerateResponse(job_id=job.get_id())
 
 @app.get("/api/job/{job_id}")

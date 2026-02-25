@@ -1,4 +1,5 @@
 import shutil
+import csv
 from dataclasses import dataclass
 from typing import Dict, List
 from datetime import datetime
@@ -51,7 +52,32 @@ def write_from_template(template_path: str, out_path: str, sheet: str, start_row
     wb.save(out_path)
     return out_path
 
-def dated_filename(prefix: str = "Pregão") -> str:
+def write_google_sheets_csv(out_path: str, items: List[OutputItem]) -> str:
+    headers = [
+        "prioridade",
+        "descricao_resumida",
+        "descricao_detalhada",
+        "unidade",
+        "quantidade",
+        "preco_unit",
+        "preco_total",
+    ]
+    with open(out_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(headers)
+        for it in items:
+            writer.writerow([
+                it.prioridade,
+                it.descricao_resumida,
+                it.descricao_detalhada,
+                it.unidade,
+                it.quantidade,
+                float(it.preco_unit),
+                float(it.preco_unit) * int(it.quantidade),
+            ])
+    return out_path
+
+def dated_filename(prefix: str = "Pregão", ext: str = "xlsx") -> str:
     tz = ZoneInfo("America/Sao_Paulo")
     stamp = datetime.now(tz).strftime("%d-%m-%y")
-    return f"{prefix} {stamp}.xlsx"
+    return f"{prefix} {stamp}.{ext}"
