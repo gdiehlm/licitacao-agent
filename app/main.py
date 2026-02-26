@@ -12,6 +12,7 @@ from rq import Queue
 
 from services.prompt_parser import parse_prompt
 from services.spec_builder import build_spec
+from services.pricing import estimate_price_from_licitacon
 from services.llm_client import LLMError
 from services.excel_writer import OutputItem, write_from_template, write_google_sheets_csv, dated_filename
 
@@ -90,16 +91,24 @@ def preview(req: PreviewRequest):
     notes: List[str] = []
     for p in parsed:
         try:
-            spec = build_spec(p.referencia_raw, p.preco_unit, SEARXNG_URL)
+            pricing = estimate_price_from_licitacon(p.referencia_raw, SEARXNG_URL)
+        except Exception as e:
+            raise HTTPException(502, f"Erro ao calcular preço médio no LicitaCon para '{p.referencia_raw}': {e}")
+        preco_estimado = pricing["average"]
+        try:
+            spec = build_spec(p.referencia_raw, preco_estimado, SEARXNG_URL)
         except LLMError as e:
             raise HTTPException(502, f"Erro ao gerar especificação via IA local (Ollama): {e}")
+        notes.append(
+            f"Item {p.prioridade}: preço unitário estimado pelo LicitaCon com média de {len(pricing['samples'])} itens similares (R$ {preco_estimado:.2f})."
+        )
         if spec["categoria"] == "desconhecido":
             notes.append(f"Item {p.prioridade}: categoria desconhecida, usei pesquisa web e gerei uma descrição preliminar para revisão.")
         items_out.append(PreviewItem(
             prioridade=p.prioridade,
             unidade=p.unidade,
             quantidade=p.quantidade,
-            preco_unit=p.preco_unit,
+            preco_unit=preco_estimado,
             referencia_raw=p.referencia_raw,
             categoria=spec["categoria"],
             descricao_resumida=spec["resumo"],
@@ -113,7 +122,7 @@ class GenerateRequest(BaseModel):
     template_id: str = Field(default="PregaoModelo_v1")
     prompt: str
     items: List[PreviewItem] = Field(default_factory=list)
-    # no MVP: usuário informa preço no prompt; sem cálculo externo
+    # preço unitário é calculado via média de itens similares no LicitaCon durante o preview
     approved: bool = False
 
 class GenerateResponse(BaseModel):
@@ -140,7 +149,12 @@ def _generate_files(template_id: str, prompt: str, reviewed_items: List[dict]) -
         parsed = parse_prompt(prompt)
         for p in parsed:
             try:
-                spec = build_spec(p.referencia_raw, p.preco_unit, SEARXNG_URL)
+                pricing = estimate_price_from_licitacon(p.referencia_raw, SEARXNG_URL)
+            except Exception as e:
+                raise HTTPException(502, f"Erro ao calcular preço médio no LicitaCon para '{p.referencia_raw}': {e}")
+            preco_estimado = pricing["average"]
+            try:
+                spec = build_spec(p.referencia_raw, preco_estimado, SEARXNG_URL)
             except LLMError as e:
                 raise HTTPException(502, f"Erro ao gerar especificação via IA local (Ollama): {e}")
             output_items.append(OutputItem(
@@ -149,7 +163,7 @@ def _generate_files(template_id: str, prompt: str, reviewed_items: List[dict]) -
                 descricao_detalhada=spec["detalhada"],
                 unidade=p.unidade,
                 quantidade=p.quantidade,
-                preco_unit=p.preco_unit
+                preco_unit=preco_estimado
             ))
 
     DATA_OUTPUTS.mkdir(parents=True, exist_ok=True)

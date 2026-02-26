@@ -165,7 +165,7 @@ function hook(){
   $("#btnCheckJob").addEventListener("click", checkJob);
   $("#approved").addEventListener("change", (ev)=>{ $("#btnGenerate").disabled=!ev.target.checked; });
 
-  $("#prompt").value = "Gere uma planilha para uma licitação usando como base o arquivo Pregão Modelo.xlsx. Os itens de referencia em ordem de prioridade são, 20 unidades do Teclado Mecânico Redragon FIZZ RGB PRETO 60% no preço de R$ 400,00 cada; 50 caixas de clips de papel com 100 unidades cada de qualquer marca no preço de R$ 5,00 cada.";
+  $("#prompt").value = "Gere uma planilha para uma licitação usando como base o arquivo Pregão Modelo.xlsx. Os itens de referência em ordem de prioridade são: 20 unidades do Teclado Mecânico Redragon FIZZ RGB PRETO 60%; 50 caixas de clips de papel com 100 unidades cada de qualquer marca.";
 }
 
 async function boot(){
