@@ -1,55 +1,58 @@
+import json
+from typing import Dict
 
-import json, os, requests
-from typing import Dict, List
-
-OLLAMA_URL = os.environ.get("OLLAMA_URL","http://ollama:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL","qwen2.5:7b")
-OLLAMA_TIMEOUT = int(os.environ.get("OLLAMA_TIMEOUT","600"))
+from services.llm_client import LLMError, gemini_chat, require_json
 
 MASTER_SYSTEM_PROMPT = """
-Você é um especialista em licitações públicas brasileiras e especificações técnicas.
-Sua função é transformar uma referência comercial em uma ESPECIFICAÇÃO TÉCNICA NEUTRA,
-adequada para pregão eletrônico.
+Você é um especialista em licitações públicas brasileiras e elaboração de especificações técnicas.
+Sua saída deve estar alinhada à Lei 14.133/2021, com neutralidade e segurança jurídica.
 
 REGRAS OBRIGATÓRIAS:
-- É terminantemente proibido citar marcas, modelos, linhas, SKUs ou fabricantes.
-- Gere apenas requisitos mínimos, objetivos e mensuráveis.
-- Sempre aceite produtos equivalentes ou superiores.
-- Use linguagem técnica, clara e auditável.
-- Organize a resposta em blocos técnicos adequados ao tipo do item.
-- Não invente requisitos sem base técnica.
-- Quando houver incerteza, declare em 'assuncoes'.
+- Proibido citar marcas, modelos, linhas, SKUs ou fabricantes.
+- Descrever requisitos mínimos por desempenho, funcionalidade e critérios mensuráveis.
+- Linguagem formal administrativa.
+- Evitar qualquer termo que possa caracterizar direcionamento.
+- Sempre considerar possibilidade de equivalente técnico.
+- Incluir normas técnicas aplicáveis (ABNT, ISO, INMETRO ou equivalentes), quando pertinente.
+- Quando houver incerteza, registrar em 'assumptions'.
+
+Retorne SOMENTE JSON válido no formato solicitado.
 """
 
-def call_llm(messages: List[Dict]) -> Dict:
-    r = requests.post(
-        f"{OLLAMA_URL}/api/chat",
-        json={
-            "model": OLLAMA_MODEL,
-            "messages": messages,
-            "stream": False,
-            "options": {"temperature": 0.2}
-        },
-        timeout=OLLAMA_TIMEOUT
-    )
-    r.raise_for_status()
-    content = r.json()["message"]["content"]
-    start = content.find("{")
-    end = content.rfind("}")
-    return json.loads(content[start:end+1])
 
-def build_spec(item_ref: str, price: float, evidences: List[Dict]) -> Dict:
+def build_spec(item_ref: str, price: float) -> Dict:
     messages = [
-        {"role":"system","content":MASTER_SYSTEM_PROMPT},
-        {"role":"user","content":json.dumps({
-            "referencia_comercial": item_ref,
-            "preco_unitario": price,
-            "evidencias": evidences,
-            "formato_saida": {
-                "descricao_resumida": "string",
-                "blocos": {"Nome do bloco": ["requisito"]},
-                "assuncoes": []
-            }
-        }, ensure_ascii=False)}
+        {"role": "system", "content": MASTER_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "referencia_comercial": item_ref,
+                    "preco_unitario_estimado": price,
+                    "objetivo": "Gerar especificação técnica neutra para termo de referência de licitação pública.",
+                    "formato_saida": {
+                        "categoria": "string",
+                        "resumo": "string",
+                        "detalhada": "string",
+                        "assumptions": ["string"],
+                    },
+                },
+                ensure_ascii=False,
+            ),
+        },
     ]
-    return call_llm(messages)
+
+    result = gemini_chat(messages, enable_google_grounding=True)
+    payload = require_json(result["text"])
+
+    if "sources" not in payload:
+        payload["sources"] = result.get("grounding_sources", [])
+
+    required_fields = ["categoria", "resumo", "detalhada"]
+    for field in required_fields:
+        if field not in payload:
+            raise LLMError(f"Campo obrigatório ausente na resposta da IA: {field}")
+
+    payload.setdefault("assumptions", [])
+    payload.setdefault("sources", [])
+    return payload

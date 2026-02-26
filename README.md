@@ -1,107 +1,75 @@
-# Agente de Pregão (local) - Demonstração
+# SATL - Agente de Pregão (MVP)
 
-Este projeto roda **localmente** via Docker (Windows/Mac/Linux) e demonstra:
-- multiusuário (estrutura pronta para evoluir; nesta demo é API)
-- busca web **sem assinatura** via **SearxNG** (self-host)
-- geração de planilha `.xlsx` a partir de um template (Pregão Modelo.xlsx)
-- fluxo com **preview (editável) → aprovação → gerar planilha XLSX + CSV para Google Sheets**
+Projeto do **SATL – Sistema Automatizado de Elaboração de Termos de Referência para Licitações Públicas Brasileiras**.
 
-## Pré-requisitos
-- Docker Desktop instalado e funcionando.
+## O que esta versão entrega
+- Backend em **FastAPI** e frontend web simples para fluxo de preview/geração.
+- Geração de especificações técnicas com **Google Generative AI (SDK `google-generativeai`)**.
+- Busca de evidências com **Google Search Grounding nativo do Gemini**.
+- Geração de arquivos finais: **XLSX** (template) + **CSV** (Google Sheets).
+- Fila assíncrona com Redis (web + worker).
 
-## Subir tudo
-Na pasta do projeto:
+## Aderência jurídica (Lei 14.133/2021)
+A geração de especificações segue regras de neutralidade técnica:
+- sem marcas/fabricantes/modelos;
+- requisitos objetivos, mensuráveis e auditáveis;
+- aceitação de equivalentes técnicos;
+- linguagem formal administrativa.
+
+## Requisitos
+- Docker Desktop (Windows convencional, Windows Server, Linux, macOS) **ou** Python 3.11+ para execução local.
+- Chave de API Gemini: `GEMINI_API_KEY`.
+
+## Execução com Docker (recomendado)
+1. Defina as variáveis de ambiente:
+   - `GEMINI_API_KEY`
+   - opcional: `GEMINI_MODEL` (default `gemini-1.5-pro`)
+   - opcional: `GEMINI_TIMEOUT` (default `120`)
+
+2. Suba os serviços:
 ```bash
 docker compose up -d --build
 ```
 
-## Acessos
-- API do agente: http://localhost:8000
-- SearxNG: http://localhost:8080
+3. Acessos:
+- API/UI: http://localhost:8000/ui
+- Redis: localhost:6379
+- PostgreSQL: localhost:5432
 
-## Templates
-Coloque seus templates em:
-`data/templates/`
+## Execução local no Windows convencional e Windows Server (sem Docker)
+> Compatível com Prompt de Comando (CMD) e PowerShell.
 
-Este projeto já inclui:
-- `data/templates/Pregão Modelo.xlsx`
-- `data/templates/templates.json` (mapeamento do template)
-
-## Como usar (fluxo)
-1) Preview (gera descrições e mostra fontes/assunções):
-```bash
-curl -X POST http://localhost:8000/api/preview ^
-  -H "Content-Type: application/json" ^
-  -d "{\"template_id\":\"PregaoModelo_v1\",\"prompt\":\"Gere ... 20 unidades do Teclado ... no preço de R$ 400,00 cada; 50 caixas de clipes ... no preço de R$ 5,00 cada.\"}"
+1. Instale dependências:
+```powershell
+cd app
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-2) Gerar (após revisar, envie approved=true):
-```bash
-curl -X POST http://localhost:8000/api/generate ^
-  -H "Content-Type: application/json" ^
-  -d "{\"template_id\":\"PregaoModelo_v1\",\"prompt\":\"...\",\"approved\":true}"
+2. Configure variáveis de ambiente (PowerShell):
+```powershell
+$env:GEMINI_API_KEY="SUA_CHAVE"
+$env:REDIS_URL="redis://localhost:6379/0"
+$env:TEMPLATES_DIR="..\data\templates"
+$env:OUTPUTS_DIR="..\data\outputs"
+$env:LOGS_DIR="..\data\logs"
 ```
 
-3) Consultar status do job:
-```bash
-curl http://localhost:8000/api/job/<JOB_ID>
+3. Suba API e worker em terminais separados:
+```powershell
+uvicorn main:app --host 0.0.0.0 --port 8000
+python -m rq worker default
 ```
 
-Quando finalizar, o `result` traz o caminho do arquivo gerado em `data/outputs/`.
-Quando finalizar, o `result` agora retorna dois arquivos em `data/outputs/`:
-- `xlsx`: planilha no template padrão.
-- `google_sheets_csv`: CSV pronto para importação no Google Sheets, mantendo as colunas padrão do template.
+> Em CMD, use `set GEMINI_API_KEY=SUA_CHAVE` etc.
 
-## Observações importantes
-- Para itens desconhecidos, a descrição é **preliminar** e vem acompanhada de **assunções** para revisão humana.
-- O texto final aplica regra "sem marca/modelo" com sanitização básica (lista bloqueada). Você pode expandir a blocklist.
-- Próximo passo: adicionar uma interface web (HTML) e autenticação (AD/LDAP/local).
+## Fluxo de uso
+1. `POST /api/preview` para parse + preço estimado + descrição técnica.
+2. Revisão humana na UI.
+3. `POST /api/generate` com `approved=true` para produzir XLSX e CSV.
+4. `GET /api/job/{job_id}` para acompanhar conclusão.
 
-
-## Tela no navegador
-Abra: http://localhost:8000/ui
-
-
-## Correção (SearxNG content=None)
-Patch aplicado para lidar com resultados do SearxNG que retornam `content=null`.
-
-## Se aparecer erro 403 do SearxNG no preview
-O agente usa `format=json` para obter resultados do SearxNG. Algumas configurações do SearxNG bloqueiam JSON e retornam **403 Forbidden**.
-Este projeto já inclui `searxng/settings.yml` habilitando JSON.
-
-Se você já tinha subido os containers antes, rode:
-```bash
-docker compose down
-docker compose up -d --build
-```
-
-Teste direto no navegador:
-- http://localhost:8080/search?q=teste&format=json
-Deve retornar JSON (não 403).
-
-
-## Se o SearxNG não abrir em http://localhost:8080
-Rode:
-```bash
-docker compose ps
-docker compose logs --tail=200 searxng
-```
-Se aparecer erro de configuração, este projeto usa `./searxng/settings.yml` montado diretamente em `/etc/searxng/settings.yml`.
-
-## SearxNG não inicia e reclama de secret_key
-Se aparecer no log: `server.secret_key is not changed`, o SearxNG encerra o worker.
-Este projeto já inclui um `server.secret_key` aleatório em `searxng/settings.yml`.
-Após atualizar o projeto, rode:
-```bash
-docker compose down -v
-docker compose up -d --build
-```
-
-
-## IA local (Ollama + Qwen)
-Este projeto sobe um serviço Ollama em http://localhost:11434 e faz chamadas para gerar especificações técnicas detalhadas (especialmente para teclados).
-Na primeira execução o modelo pode precisar ser baixado.
-
-Testes:
-- UI: http://localhost:8000/ui
-- Ollama tags: http://localhost:11434/api/tags
+## Observações
+- O cálculo de preços e as fontes agora são extraídos via grounding do Gemini.
+- Caso a IA não encontre amostras suficientes, o preview retorna erro para revisão do item.

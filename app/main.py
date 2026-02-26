@@ -21,8 +21,6 @@ DATA_TEMPLATES = Path(os.environ.get("TEMPLATES_DIR", "/data/templates"))
 DATA_OUTPUTS = Path(os.environ.get("OUTPUTS_DIR", "/data/outputs"))
 LOGS_DIR = Path(os.environ.get("LOGS_DIR", "/data/logs"))
 
-SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://searxng:8080")
-
 REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 redis_conn = Redis.from_url(REDIS_URL)
 q = Queue("default", connection=redis_conn)
@@ -91,14 +89,14 @@ def preview(req: PreviewRequest):
     notes: List[str] = []
     for p in parsed:
         try:
-            pricing = estimate_price_from_licitacon(p.referencia_raw, SEARXNG_URL)
+            pricing = estimate_price_from_licitacon(p.referencia_raw)
         except Exception as e:
             raise HTTPException(502, f"Erro ao calcular preço médio no LicitaCon para '{p.referencia_raw}': {e}")
         preco_estimado = pricing["average"]
         try:
-            spec = build_spec(p.referencia_raw, preco_estimado, SEARXNG_URL)
+            spec = build_spec(p.referencia_raw, preco_estimado)
         except LLMError as e:
-            raise HTTPException(502, f"Erro ao gerar especificação via IA local (Ollama): {e}")
+            raise HTTPException(502, f"Erro ao gerar especificação via IA (Gemini): {e}")
         notes.append(
             f"Item {p.prioridade}: preço unitário estimado pelo LicitaCon com média de {len(pricing['samples'])} itens similares (R$ {preco_estimado:.2f})."
         )
@@ -149,14 +147,14 @@ def _generate_files(template_id: str, prompt: str, reviewed_items: List[dict]) -
         parsed = parse_prompt(prompt)
         for p in parsed:
             try:
-                pricing = estimate_price_from_licitacon(p.referencia_raw, SEARXNG_URL)
+                pricing = estimate_price_from_licitacon(p.referencia_raw)
             except Exception as e:
                 raise HTTPException(502, f"Erro ao calcular preço médio no LicitaCon para '{p.referencia_raw}': {e}")
             preco_estimado = pricing["average"]
             try:
-                spec = build_spec(p.referencia_raw, preco_estimado, SEARXNG_URL)
+                spec = build_spec(p.referencia_raw, preco_estimado)
             except LLMError as e:
-                raise HTTPException(502, f"Erro ao gerar especificação via IA local (Ollama): {e}")
+                raise HTTPException(502, f"Erro ao gerar especificação via IA (Gemini): {e}")
             output_items.append(OutputItem(
                 prioridade=p.prioridade,
                 descricao_resumida=spec["resumo"],
